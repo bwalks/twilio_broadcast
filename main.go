@@ -25,12 +25,29 @@ func init(){
 	authToken = os.Getenv("AUTH_TOKEN")
 	toNumber = os.Getenv("TO_PHONE_NUMBER")
 	fromNumber = os.Getenv("FROM_PHONE_NUMBER")
-	messageChannel = make(chan string)
+	messageChannel = make(chan string, 5)
 }
 
 func main(){
+	go worker(messageChannel)
 	http.HandleFunc("/twilio/broadcast", broadcast)
 	http.ListenAndServe(":8000", nil)
+}
+
+func worker(c chan string){
+	for {
+		val := <- c
+		fmt.Println(val)
+		url := fmt.Sprintf("%s/Accounts/%s/Messages.json", baseUrl, accountSID)
+		httpclient.
+			WithHeader("Authorization", "Basic " + basicAuth(accountSID, authToken)).
+			WithHeader("Content-Type", "application/json").
+			Post(url, map[string]string {
+				"To": toNumber,
+				"From": fromNumber,
+				"Body": val,
+			})
+	}
 }
 
 func toString(r io.Reader) string{
@@ -44,14 +61,10 @@ func basicAuth(username, password string) string {
 	return base64.StdEncoding.EncodeToString([]byte(auth))
   }
 
-func broadcast(w http.ResponseWriter, r *http.Request) {	
-	url := fmt.Sprintf("%s/Accounts/%s/Messages.json", baseUrl, accountSID)
-	httpclient.
-		WithHeader("Authorization", "Basic " + basicAuth(accountSID, authToken)).
-		WithHeader("Content-Type", "application/json").
-		Post(url, map[string]string {
-			"To": toNumber,
-			"From": fromNumber,
-			"Body": r.FormValue("Body"),
-		})
+func broadcast(w http.ResponseWriter, r *http.Request) {
+	body := r.FormValue("Body")	
+	if body == ""{
+		return
+	}
+	messageChannel <- body
 }
